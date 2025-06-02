@@ -5,3 +5,9 @@ Potential Directions for this project: Find the optimal window when computing re
 Some definitions:
 
 Implied Volatility: When using the BS model, we plug in the current stock price and the current option price. We then solve for the volatility and this is the implied volatility
+
+Garch:
+
+Choices:
+The hidden dimension size for the LSTM was initially chosen to be 32, but later changed 
+When implementing the LSTM the final 200 entries were used for testing while the initial 3271 entries were used for training
