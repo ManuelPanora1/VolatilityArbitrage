@@ -17,3 +17,9 @@ In the first step of this project I compared LSTM predictions of volatility to t
 
 
 Further Directions: The rolling window for the volatility, we should test that right now and see which is the best! And we need to define what is best in our case! We can also test the lookback and see which one is the best.
+
+6/5/25 Current Results: 
+Strategy Metrics:
+Total PnL: $-46.04
+Win Rate: 44.2%
+Profit Factor: 0.76

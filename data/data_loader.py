@@ -5,10 +5,9 @@ from pathlib import Path
 import torch
 
 def preprocess_data(type="financial", tickers=['SPY', '^VIX'], 
-                   start='2010-01-01', 
-                   end='2024-01-01',
-                   cache_path="data/processed/spy_vix_processed.parquet"):
-    
+                    start='2010-01-01', 
+                    end='2024-01-01',
+                    cache_path="data/processed/spy_vix_processed.parquet"):
     # Check for cached data
     if Path(cache_path).exists():
         return pd.read_parquet(cache_path)
