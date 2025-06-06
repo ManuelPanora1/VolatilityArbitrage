@@ -29,14 +29,16 @@ def generate_vol_arb_signals(data, T_days = 21, K_offset = 0, r = 0.01):
         })
     return pd.DataFrame(option_results)
 
-def backtest_vol_arb(data):
+def backtest_vol_arb(data, T_days = 21):
     signals = generate_vol_arb_signals(data)
+    signals['FuturePrice'] = signals['MarketPrice'].shift(-T_days)
 
-    #KEY ASSUMPTIONS: We are buying or selling right after 1 day, that is the shift, future direction: to add custom holding period.
+    #KEY ASSUMPTIONS: We are buying or selling right after 21 days, that is the shift, future direction: to add custom holding period.
+    #Maybe even adaptive holding periods and how delta hedging could work in this scenario. This is the most basic assumption
     signals['PnL'] = np.where(
         signals['Signal'] == 'Buy',  # If buying options today
-        signals['MarketPrice'].shift(-1) - signals['MarketPrice'],  # Sell tomorrow - Buy today
-        signals['MarketPrice'] - signals['MarketPrice'].shift(-1)   # Sell today - Buy tomorrow 
+        signals['FuturePrice'] - signals['MarketPrice'],  # Sell tomorrow - Buy today
+        signals['MarketPrice'] - signals['FuturePrice']   # Sell today - Buy tomorrow 
     )
 
     signals = apply_transaction_costs(signals)
@@ -50,9 +52,19 @@ def apply_transaction_costs(signals, cost_per_contract= 0.05, slippage_bps = 2):
     signals['PnL_Net'] = signals['PnL'] - signals['Cost'] - signals['Slippage']
     return signals
 
-def calculate_position_size(signals, capital=100000, risk_per_trade = 0.01) -> pd.DataFrame:
+def calculate_position_size(signals, capital=100000, risk_per_trade = 0.01):
     signals['SpreadZ'] = (signals['Spread'] - signals['Spread'].mean()) / signals['Spread'].std()
     # Transform to 0-1 range 
     signals['Weight'] = 1 / (1 + np.exp(-signals['SpreadZ']))  
     signals['Position'] = (capital * risk_per_trade * signals['Weight'] / signals['MarketPrice'])
     return signals
+
+def generate_signal(spread, threshold=0.5):
+    if spread > threshold * spread.std():
+        return 'Strong Buy'
+    elif spread > 0:
+        return 'Weak Buy'
+    elif spread < -threshold * spread.std():
+        return 'Strong Sell'
+    else:
+        return 'No Trade'

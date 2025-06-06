@@ -2,10 +2,11 @@ import numpy as np
 import torch
 from data.data_loader import preprocess_data, partition_data
 from sklearn.preprocessing import MinMaxScaler
-from models.lstm_model import lstm_train
+from models.lstm_model import lstm_train, time_series_validation
 import matplotlib.pyplot as plt
 from strategies.vol_arbitrage import backtest_vol_arb
 import pandas as pd
+from analysis.monte_carlo_simulation import monte_carlo
 
 def lstm_arbitrage():
     #Process data
@@ -38,7 +39,8 @@ def lstm_arbitrage():
         'Price': data['Price'][-n:],
         'RealizedVol': data['RealizedVol'][-n:],
         'LSTMVol': preds_unscaled.flatten(),
-        'ImpliedVol': data['ImpliedVol'][-n:] 
+        #TODO: Found the Bug, the implied volatility is unscaled
+        'ImpliedVol': scaler.fit_transform(data[['ImpliedVol']].iloc[-n:]).flatten()
     })
 
     trades = backtest_vol_arb(testing)
@@ -55,6 +57,19 @@ def lstm_arbitrage():
     print(f"Win Rate: {100*(trades['PnL_Net'] > 0).mean():.1f}%")
     print(f"Profit Factor: {trades[trades['PnL_Net'] > 0]['PnL_Net'].sum() / -trades[trades['PnL_Net'] < 0]['PnL_Net'].sum():.2f}")
 
+    #Run Monte Carlo Simulation to see if the model has any predictive power:
+    returns = []
+    for _,row in trades.iterrows():
+        if np.isnan(row['PnL_Net']) or np.isnan(row['MarketPrice']): 
+            continue
+        returns.append(row['PnL_Net']/row['MarketPrice'])
+
+    p_val = monte_carlo(np.array(returns))
+
+    print()
+    print("This is your coveted pval: (Moment of truth)")
+    print(p_val)
+
 def transformer_arbitrage():
     return
 
@@ -65,8 +80,14 @@ def main(type):
     elif (type == 'Transformer'):
         transformer_arbitrage()
         return
+    
+def validate_model(type):
+    if (type == 'LSTM'):
+        data = preprocess_data()
+        time_series_validation(data)
 
 if __name__ == "__main__":
-    main('LSTM')
+    #main('LSTM')
+    validate_model('LSTM')
 
 

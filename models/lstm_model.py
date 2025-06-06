@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 from pathlib import Path
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
 class LSTMModel(nn.Module):
     def __init__(self):
@@ -29,6 +32,46 @@ def lstm_train(X, y):
         optimizer.step()
 
     return model
+
+def time_series_validation(data, lookback=30, n_splits=5):
+    scaler = MinMaxScaler()
+    scaled_vol = scaler.fit_transform(data[['RealizedVol']])
+    
+    # Prepare sequences
+    X = np.array([scaled_vol[i-lookback:i] for i in range(lookback, len(scaled_vol))])
+    y = np.array([scaled_vol[i] for i in range(lookback, len(scaled_vol))])
+    
+    #For time series cross validation
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    results = []
+    
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X)):
+        X_train = torch.tensor(X[train_idx], dtype=torch.float32)
+        y_train = torch.tensor(y[train_idx], dtype=torch.float32)
+        X_test = torch.tensor(X[test_idx], dtype=torch.float32)
+        y_test = torch.tensor(y[test_idx], dtype=torch.float32)
+        
+        model = lstm_train(X_train, y_train)
+        
+        model.eval()
+        with torch.no_grad():
+            train_preds = model(X_train)
+            train_loss = nn.MSELoss()(train_preds, y_train).item()
+            
+            test_preds = model(X_test)
+            test_loss = nn.MSELoss()(test_preds, y_test).item()
+        results.append({
+            'fold': fold + 1,
+            'train_loss': train_loss,
+            'test_loss': test_loss
+        })
+        
+        print(f"Fold {fold + 1}:")
+        print(f"  Train Loss: {train_loss:.6f}")
+        print(f"  Test Loss: {test_loss:.6f}")
+        print("-----------------------")
+    return results
+
 
 def save_model(model, scaler, lookback, save_dir="models/saved_models"):
     Path(save_dir).mkdir(parents=True, exist_ok=True)
