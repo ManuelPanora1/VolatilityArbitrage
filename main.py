@@ -1,10 +1,9 @@
 import numpy as np
 import torch
 from data.data_loader import preprocess_data, partition_data
-from sklearn.preprocessing import MinMaxScaler
 from models.lstm_model import lstm_train, time_series_validation
 import matplotlib.pyplot as plt
-from strategies.vol_arbitrage import backtest_vol_arb
+from strategies.vol_arbitrage import backtest_vol_arb, generate_performance_metrics
 import pandas as pd
 from analysis.monte_carlo_simulation import monte_carlo
 
@@ -13,7 +12,7 @@ def lstm_arbitrage():
     data = preprocess_data()
 
     #Train Model
-    X_train, y_train, X_test, y_test, scaler = partition_data(data, MinMaxScaler())
+    X_train, y_train, X_test, y_test, scaler = partition_data(data)
     model = lstm_train(X_train, y_train)
 
     #Save model later
@@ -22,9 +21,7 @@ def lstm_arbitrage():
     model.eval()
     with torch.no_grad():
         preds = model(X_test).numpy()
-
     preds_unscaled = scaler.inverse_transform(preds)
-
     n = len(y_test)
 
     #Volatility forecast plot
@@ -35,15 +32,16 @@ def lstm_arbitrage():
     plt.title("Volatility Forecasting")
     plt.show()
     
+
     testing = pd.DataFrame({
         'Price': data['Price'][-n:],
         'RealizedVol': data['RealizedVol'][-n:],
         'LSTMVol': preds_unscaled.flatten(),
-        #TODO: Found the Bug, the implied volatility is unscaled
-        'ImpliedVol': scaler.fit_transform(data[['ImpliedVol']].iloc[-n:]).flatten()
+        'ImpliedVol': np.array((data[['ImpliedVol']].iloc[-n:])).flatten()
     })
 
-    trades = backtest_vol_arb(testing)
+    trades, portfolio = backtest_vol_arb(testing)
+    metrics = generate_performance_metrics(trades)
        
     plt.plot(trades.index, trades['PnL_Net'].cumsum(), label='Strategy PnL')
     plt.axhline(0, color='black', linestyle='--')
@@ -53,16 +51,19 @@ def lstm_arbitrage():
     plt.show()
     # Print performance metrics
     print("\nStrategy Metrics:")
-    print(f"Total PnL: ${trades['PnL_Net'].sum():.2f}")
-    print(f"Win Rate: {100*(trades['PnL_Net'] > 0).mean():.1f}%")
-    print(f"Profit Factor: {trades[trades['PnL_Net'] > 0]['PnL_Net'].sum() / -trades[trades['PnL_Net'] < 0]['PnL_Net'].sum():.2f}")
+    print(f"Total PnL: ${metrics['total_pnl']:,.2f}")
+    print(f"Win Rate: {100*metrics['win_rate']:.1f}%")
+    print(f"Profit Factor: {metrics['profit_factor']:.2f}")
+    print(f"Max Drawdown: ${metrics['max_drawdown']:,.2f}")
+    print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+    print(f"Total Costs: ${portfolio['total_commission'] + portfolio['total_slippage']:,.2f}")
 
     #Run Monte Carlo Simulation to see if the model has any predictive power:
     returns = []
     for _,row in trades.iterrows():
-        if np.isnan(row['PnL_Net']) or np.isnan(row['MarketPrice']): 
+        if np.isnan(row['PnL_Net']) or np.isnan(row['exit_price']): 
             continue
-        returns.append(row['PnL_Net']/row['MarketPrice'])
+        returns.append(row['PnL_Net']/row['exit_price'])
 
     p_val = monte_carlo(np.array(returns))
 
@@ -87,7 +88,7 @@ def validate_model(type):
         time_series_validation(data)
 
 if __name__ == "__main__":
-    #main('LSTM')
-    validate_model('LSTM')
+    main('LSTM')
+    #validate_model('LSTM')
 
 
